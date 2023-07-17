@@ -86,6 +86,7 @@ func (t *TimedMap) clean() {
 	for k, v := range t.tmap {
 		// ExpiresAt == 0  => permanent element
 		if v.ExpiresAt != ElementPermanent && now >= v.ExpiresAt {
+			t.onTimeout(v.Value)
 			delete(t.tmap, k)
 		}
 	}

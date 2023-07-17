@@ -17,11 +17,14 @@
 package temap
 
 import (
+	"log"
 	"testing"
 	"time"
 )
 
-var tmap = New(time.Second * 10)
+var tmap = New(time.Second * 10, func(val interface{}){
+	log.Print("timeout")
+})
 var expiresAt = time.Now().Add(time.Minute)
 
 func BenchmarkTimedMap_SetTemporary(b *testing.B) {
