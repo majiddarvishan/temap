@@ -1,3 +1,3 @@
-module github.com/firasdarwish/temap
+module github.com/majiddarvishan/temap
 
 go 1.15
