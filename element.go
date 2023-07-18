@@ -37,7 +37,7 @@ func (t *TimedMap) SetPermanent(key string, value interface{}) {
 	t.mu.Unlock()
 }
 
-func (t *TimedMap) SetTemporary(key string, value interface{}, expiresAt time.Time) {
+func (t *TimedMap) SetTemporary(key any, value interface{}, expiresAt time.Time) {
 	t.mu.Lock()
 	if t.tmap[key] != nil {
 		t.tmap[key].ExpiresAt = expiresAt.UnixNano()
@@ -51,7 +51,7 @@ func (t *TimedMap) SetTemporary(key string, value interface{}, expiresAt time.Ti
 	t.mu.Unlock()
 }
 
-func (t *TimedMap) Get(key string) (interface{}, int64, bool) {
+func (t *TimedMap) Get(key any) (interface{}, int64, bool) {
 	t.mu.RLock()
 	v := t.tmap[key]
 	t.mu.RUnlock()
@@ -61,7 +61,7 @@ func (t *TimedMap) Get(key string) (interface{}, int64, bool) {
 	return v.Value, v.ExpiresAt, true
 }
 
-func (t *TimedMap) Remove(key string) {
+func (t *TimedMap) Remove(key any) {
 	t.mu.Lock()
 	delete(t.tmap, key)
 	t.mu.Unlock()
@@ -75,7 +75,7 @@ func (t *TimedMap) RemoveAll() {
 	}
 }
 
-func (t *TimedMap) MakePermanent(key string) bool {
+func (t *TimedMap) MakePermanent(key any) bool {
 	t.mu.Lock()
 
 	if t.tmap[key] == nil {
@@ -88,7 +88,7 @@ func (t *TimedMap) MakePermanent(key string) bool {
 	return true
 }
 
-func (t *TimedMap) SetExpiry(key string, expiresAt time.Time) bool {
+func (t *TimedMap) SetExpiry(key any, expiresAt time.Time) bool {
 	t.mu.Lock()
 
 	if t.tmap[key] == nil {

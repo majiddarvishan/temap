@@ -27,7 +27,7 @@ const (
 )
 
 type TimedMap struct {
-	tmap map[string]*element
+	tmap map[any]*element
 	mu   *sync.RWMutex
 
 	cleanerInterval   time.Duration
@@ -40,7 +40,7 @@ type TimedMap struct {
 
 func New(interval time.Duration, timeout_callback func(val any)) *TimedMap {
 	t := &TimedMap{
-		tmap:              map[string]*element{},
+		tmap:              map[any]*element{},
 		mu:                &sync.RWMutex{},
 		cleanerInterval:   interval,
 		cleanerTicker:     time.NewTicker(interval),

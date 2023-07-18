@@ -16,6 +16,6 @@
 
 package temap
 
-func (t *TimedMap) ToMap() map[string]*element {
+func (t *TimedMap) ToMap() map[any]*element {
 	return t.tmap
 }
