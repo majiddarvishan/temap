@@ -35,10 +35,10 @@ type TimedMap struct {
 	stopCleanerTicker chan bool
 	stoppedCleaner    bool
 
-	onTimeout func(val interface{})
+	onTimeout func(val any)
 }
 
-func New(interval time.Duration, timeout_callback func(val interface{})) *TimedMap {
+func New(interval time.Duration, timeout_callback func(val any)) *TimedMap {
 	t := &TimedMap{
 		tmap:              map[string]*element{},
 		mu:                &sync.RWMutex{},
