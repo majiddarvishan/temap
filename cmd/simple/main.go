@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/majiddarvishan/temap"
+	// "github.com/majiddarvishan/temap"
+    "temap"
 )
 
 func main() {
