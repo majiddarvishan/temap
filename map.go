@@ -46,10 +46,88 @@ func New(interval time.Duration, timeout_callback func(val any)) *TimedMap {
 		cleanerTicker:     time.NewTicker(interval),
 		stopCleanerTicker: make(chan bool),
 		stoppedCleaner:    true,
-		onTimeout : timeout_callback,
+		onTimeout:         timeout_callback,
 	}
 
 	t.StartCleaner()
 
 	return t
+}
+
+func (t *TimedMap) SetPermanent(key string, value interface{}) {
+	t.mu.Lock()
+	if t.tmap[key] != nil {
+		t.tmap[key].ExpiresAt = ElementPermanent
+		t.tmap[key].Value = value
+	} else {
+		t.tmap[key] = &element{
+			Value:     value,
+			ExpiresAt: ElementPermanent,
+		}
+	}
+	t.mu.Unlock()
+}
+
+func (t *TimedMap) SetTemporary(key any, value interface{}, expiresAt time.Time) {
+	t.mu.Lock()
+	if t.tmap[key] != nil {
+		t.tmap[key].ExpiresAt = expiresAt.UnixNano()
+		t.tmap[key].Value = value
+	} else {
+		t.tmap[key] = &element{
+			Value:     value,
+			ExpiresAt: expiresAt.UnixNano(),
+		}
+	}
+	t.mu.Unlock()
+}
+
+func (t *TimedMap) Get(key any) (interface{}, int64, bool) {
+	t.mu.RLock()
+	v := t.tmap[key]
+	t.mu.RUnlock()
+	if v == nil {
+		return nil, ElementDoesntExist, false
+	}
+	return v.Value, v.ExpiresAt, true
+}
+
+func (t *TimedMap) Remove(key any) {
+	t.mu.Lock()
+	delete(t.tmap, key)
+	t.mu.Unlock()
+}
+
+func (t *TimedMap) RemoveAll() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for k := range t.tmap {
+		delete(t.tmap, k)
+	}
+}
+
+func (t *TimedMap) MakePermanent(key any) bool {
+	t.mu.Lock()
+
+	if t.tmap[key] == nil {
+		t.mu.Unlock()
+		return false
+	}
+
+	t.tmap[key].ExpiresAt = ElementPermanent
+	t.mu.Unlock()
+	return true
+}
+
+func (t *TimedMap) SetExpiry(key any, expiresAt time.Time) bool {
+	t.mu.Lock()
+
+	if t.tmap[key] == nil {
+		t.mu.Unlock()
+		return false
+	}
+
+	t.tmap[key].ExpiresAt = expiresAt.UnixNano()
+	t.mu.Unlock()
+	return true
 }
