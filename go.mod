@@ -1,3 +1,3 @@
-module github.com/majiddarvishan/temap
+module temap
 
-go 1.18
+go 1.21.3
