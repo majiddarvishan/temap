@@ -84,8 +84,9 @@ func (t *TimedMap) SetTemporary(key any, value interface{}, expiresAt time.Time)
 
 func (t *TimedMap) Get(key any) (interface{}, int64, bool) {
 	t.mu.RLock()
+	defer t.mu.RUnlock()
+
 	v := t.tmap[key]
-	t.mu.RUnlock()
 	if v == nil {
 		return nil, ElementDoesntExist, false
 	}
@@ -94,8 +95,9 @@ func (t *TimedMap) Get(key any) (interface{}, int64, bool) {
 
 func (t *TimedMap) Remove(key any) {
 	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	delete(t.tmap, key)
-	t.mu.Unlock()
 }
 
 func (t *TimedMap) RemoveAll() {
