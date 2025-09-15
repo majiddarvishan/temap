@@ -22,7 +22,7 @@ import (
 	"time"
 )
 
-var tmap = New(time.Second * 10, func(val interface{}){
+var tmap = New(time.Second * 10, func(key, val interface{}){
 	log.Print("timeout")
 })
 var expiresAt = time.Now().Add(time.Minute)
