@@ -16,6 +16,14 @@
 
 package temap
 
-func (t *TimedMap) ToMap() map[any]*element {
-	return t.tmap
+// ToMap returns a safe snapshot of all items.
+func (t *TimedMap) ToMap() map[any]any {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	out := make(map[any]any, len(t.items))
+	for k, v := range t.items {
+		out[k] = v.Value
+	}
+	return out
 }

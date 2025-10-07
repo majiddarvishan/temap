@@ -16,7 +16,38 @@
 
 package temap
 
+// --------------------------------------------------------------------
+// Internal element + heap (efficient expiry tracking)
+// --------------------------------------------------------------------
 type element struct {
-	Value     interface{} `json:"value"`
-	ExpiresAt int64       `json:"expires_at"` // nanoseconds
+	Key       any   `json:"key"`
+	Value     any   `json:"value"`
+	ExpiresAt int64 `json:"expires_at"` // UnixNano timestamp
+	index     int   `json:"index"`      // heap index
+}
+
+type expiryHeap []*element
+
+func (h expiryHeap) Len() int           { return len(h) }
+func (h expiryHeap) Less(i, j int) bool { return h[i].ExpiresAt < h[j].ExpiresAt }
+func (h expiryHeap) Swap(i, j int) {
+	h[i], h[j] = h[j], h[i]
+	h[i].index = i
+	h[j].index = j
+}
+
+func (h *expiryHeap) Push(x any) {
+	item := x.(*element)
+	item.index = len(*h)
+	*h = append(*h, item)
+}
+
+func (h *expiryHeap) Pop() any {
+	old := *h
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil
+	item.index = -1
+	*h = old[:n-1]
+	return item
 }

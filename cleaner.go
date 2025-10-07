@@ -16,82 +16,100 @@
 
 package temap
 
-import "time"
+import (
+	"container/heap"
+	"time"
+)
 
-func (t *TimedMap) StartCleaner() {
-	// already running
-	if t.stoppedCleaner == false {
-		return
-	}
+// --------------------------------------------------------------------
+// Cleaner control
+// --------------------------------------------------------------------
 
-	go func() {
-		for {
-			select {
-			case <-t.cleanerTicker.C:
-				t.clean()
-			case <-t.stopCleanerTicker:
-				//stop cleaner
-				break
-			}
-		}
-	}()
-}
-
+// StopCleaner gracefully stops background cleaner.
 func (t *TimedMap) StopCleaner() {
-	// already stopped
-	if t.stoppedCleaner {
-		return
-	}
-
-	// stop the ticker
-	t.cleanerTicker.Stop()
-
-	// stop the cleaner
-	go func() {
-		t.stopCleanerTicker <- true
-		return
-	}()
-}
-
-func (t *TimedMap) RestartCleanerWithInterval(interval time.Duration) {
-	// stop the cleaner
-	t.StopCleaner()
-
-	// set new interval
-	t.cleanerInterval = interval
-
-	// set new ticker
-	if t.cleanerTicker == nil {
-		t.cleanerTicker = time.NewTicker(t.cleanerInterval)
-	} else {
-		t.cleanerTicker.Reset(interval)
-	}
-
-	// restart the cleaner
-	t.StartCleaner()
-}
-
-func (t *TimedMap) clean() {
-	// skip cleaning session if map is empty
-	if len(t.tmap) == 0 {
-		return
-	}
-
-	// current time in unix timestamp (nanoseconds)
-	now := time.Now().UnixNano()
-
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	for k, v := range t.tmap {
-		// ExpiresAt == 0  => permanent element
-		if v.ExpiresAt != ElementPermanent && now >= v.ExpiresAt {
-			go t.onTimeout(k, v.Value)
-			delete(t.tmap, k)
-		}
+	if t.stopped {
+		return
 	}
+
+	t.stopped = true
+	close(t.stopCh)
+	t.mu.Unlock()
+	t.wg.Wait()
+	t.mu.Lock()
 }
 
-func (t *TimedMap) CleanNow() {
-	t.clean()
+// StartCleaner restarts background cleaner if stopped.
+func (t *TimedMap) StartCleaner() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.startCleaner()
+}
+
+// RestartCleaner stops and starts cleaner again.
+func (t *TimedMap) RestartCleaner() {
+	t.StopCleaner()
+	t.StartCleaner()
+}
+
+// --------------------------------------------------------------------
+// Internal cleaner goroutine
+// --------------------------------------------------------------------
+func (t *TimedMap) startCleaner() {
+	if !t.stopped && t.stopCh != nil {
+		return // already running
+	}
+
+	t.stopCh = make(chan struct{})
+	t.stopped = false
+	t.wg.Add(1)
+
+	go func() {
+		defer t.wg.Done()
+
+		for {
+			t.mu.Lock()
+			if len(t.expHeap) == 0 {
+				t.mu.Unlock()
+				select {
+				case <-time.After(time.Second):
+					continue
+				case <-t.stopCh:
+					return
+				}
+			}
+
+			next := t.expHeap[0]
+			wait := time.Until(time.Unix(0, next.ExpiresAt))
+			if wait <= 0 {
+				expired := []*element{}
+				now := time.Now().UnixNano()
+
+				for len(t.expHeap) > 0 && t.expHeap[0].ExpiresAt <= now {
+					el := heap.Pop(&t.expHeap).(*element)
+					delete(t.items, el.Key)
+					expired = append(expired, el)
+					t.stats.expired++
+				}
+				t.mu.Unlock()
+
+				for _, el := range expired {
+					if t.onExpire != nil {
+						go t.onExpire(el.Key, el.Value)
+					}
+				}
+				continue
+			}
+
+			t.mu.Unlock()
+			select {
+			case <-time.After(wait):
+				continue
+			case <-t.stopCh:
+				return
+			}
+		}
+	}()
 }
