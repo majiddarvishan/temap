@@ -61,9 +61,11 @@ type TimedMap struct {
 	wg            sync.WaitGroup
 	stopped       bool
 
-	// Worker pool for callbacks
+	// Worker pool for expirations
 	expireWorkers int
-	expireQueue   chan *element
+	expireQueue   []*element
+	expireMu      sync.Mutex
+	expireCond    *sync.Cond
 	expireWg      sync.WaitGroup
 
 	stats struct {
@@ -79,27 +81,44 @@ type TimedMap struct {
 // --------------------------------------------------------------------
 func New(onExpire func(key, val any), workerCount int) *TimedMap {
 	if workerCount <= 0 {
-		workerCount = 4 // default
+		workerCount = 4
 	}
+
 	tm := &TimedMap{
 		items:         make(map[any]*element),
 		onExpire:      onExpire,
 		expireWorkers: workerCount,
-		expireQueue:   make(chan *element, 1024),
 	}
+	tm.expireCond = sync.NewCond(&tm.expireMu)
 	heap.Init(&tm.expHeap)
 	tm.startExpireWorkers()
 	tm.startCleaner()
 	return tm
 }
 
-// Start a bounded worker pool for expiration callbacks
+// --------------------------------------------------------------------
+// Worker pool
+// --------------------------------------------------------------------
 func (t *TimedMap) startExpireWorkers() {
 	for i := 0; i < t.expireWorkers; i++ {
 		t.expireWg.Add(1)
 		go func() {
 			defer t.expireWg.Done()
-			for el := range t.expireQueue {
+			for {
+				t.expireMu.Lock()
+				for len(t.expireQueue) == 0 && !t.stopped {
+					t.expireCond.Wait()
+				}
+
+				if t.stopped && len(t.expireQueue) == 0 {
+					t.expireMu.Unlock()
+					return
+				}
+
+				el := t.expireQueue[0]
+				t.expireQueue = t.expireQueue[1:]
+				t.expireMu.Unlock()
+
 				if t.onExpire != nil {
 					t.onExpire(el.Key, el.Value)
 				}
@@ -192,7 +211,6 @@ func (t *TimedMap) SetExpiry(key any, expiresAt time.Time) bool {
 
 	newExp := expiresAt.UnixNano()
 	now := time.Now().UnixNano()
-
 	if newExp <= now {
 		if el.ExpiresAt != ElementPermanent && el.index >= 0 {
 			heap.Remove(&t.expHeap, el.index)
@@ -320,11 +338,14 @@ func (t *TimedMap) StopCleaner() {
 	t.stopped = true
 	close(t.stopCh)
 	t.mu.Unlock()
-	t.wg.Wait()
 
-	// Stop expire workers
-	close(t.expireQueue)
-	t.expireWg.Wait()
+	// Wake all workers so they can exit
+	t.expireMu.Lock()
+	t.expireCond.Broadcast()
+	t.expireMu.Unlock()
+
+	t.wg.Wait()        // wait for cleaner goroutine
+	t.expireWg.Wait()  // wait for all workers
 }
 
 func (t *TimedMap) StartCleaner() {
@@ -387,14 +408,11 @@ func (t *TimedMap) startCleaner() {
 				}
 				t.mu.Unlock()
 
-				// Send to worker pool
-				for _, el := range expired {
-					select {
-					case t.expireQueue <- el:
-					default:
-						go func(el *element) { t.onExpire(el.Key, el.Value) }(el)
-					}
-				}
+				// Send expired elements to unbounded queue
+				t.expireMu.Lock()
+				t.expireQueue = append(t.expireQueue, expired...)
+				t.expireMu.Unlock()
+				t.expireCond.Broadcast()
 				continue
 			}
 
