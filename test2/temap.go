@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,6 +20,7 @@ type TTLMap struct {
 	mu       sync.RWMutex
 	items    map[string]*item
 	callback ExpirationCallback
+	size     int64 // atomic counter
 }
 
 // New creates a new TTLMap with optional expiration callback
@@ -29,13 +31,22 @@ func New(callback ExpirationCallback) *TTLMap {
 	}
 }
 
+// NewWithCapacity creates a new TTLMap with pre-allocated capacity
+func NewWithCapacity(capacity int, callback ExpirationCallback) *TTLMap {
+	return &TTLMap{
+		items:    make(map[string]*item, capacity),
+		callback: callback,
+	}
+}
+
 // SetTemporary adds a key-value pair with TTL
 func (m *TTLMap) SetTemporary(key string, value interface{}, ttl time.Duration) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+
+	existing, exists := m.items[key]
 
 	// Cancel existing timer if present
-	if existing, ok := m.items[key]; ok && existing.timer != nil {
+	if exists && existing.timer != nil {
 		existing.timer.Stop()
 	}
 
@@ -51,15 +62,22 @@ func (m *TTLMap) SetTemporary(key string, value interface{}, ttl time.Duration) 
 		expiration: expiration,
 		timer:      timer,
 	}
+
+	if !exists {
+		atomic.AddInt64(&m.size, 1)
+	}
+
+	m.mu.Unlock()
 }
 
 // SetPermanent adds a key-value pair without expiration
 func (m *TTLMap) SetPermanent(key string, value interface{}) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+
+	existing, exists := m.items[key]
 
 	// Cancel existing timer if present
-	if existing, ok := m.items[key]; ok && existing.timer != nil {
+	if exists && existing.timer != nil {
 		existing.timer.Stop()
 	}
 
@@ -68,33 +86,49 @@ func (m *TTLMap) SetPermanent(key string, value interface{}) {
 		expiration: 0,
 		timer:      nil,
 	}
-}
 
-// Get retrieves a value by key, returns nil if not found or expired
-func (m *TTLMap) Get(key string) (interface{}, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	itm, ok := m.items[key]
-	if !ok {
-		return nil, false
+	if !exists {
+		atomic.AddInt64(&m.size, 1)
 	}
 
-	// Check if expired (shouldn't happen due to timer, but extra safety)
-	if itm.expiration > 0 && time.Now().UnixNano() > itm.expiration {
+	m.mu.Unlock()
+}
+
+// Get retrieves a value by key, returns nil if not found
+func (m *TTLMap) Get(key string) (interface{}, bool) {
+	m.mu.RLock()
+	itm, ok := m.items[key]
+	m.mu.RUnlock()
+
+	if !ok {
 		return nil, false
 	}
 
 	return itm.value, true
 }
 
+// GetMultiple retrieves multiple values at once (more efficient than multiple Get calls)
+func (m *TTLMap) GetMultiple(keys []string) map[string]interface{} {
+	result := make(map[string]interface{}, len(keys))
+
+	m.mu.RLock()
+	for _, key := range keys {
+		if itm, ok := m.items[key]; ok {
+			result[key] = itm.value
+		}
+	}
+	m.mu.RUnlock()
+
+	return result
+}
+
 // Remove deletes a key and cancels its timer
 func (m *TTLMap) Remove(key string) bool {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	itm, ok := m.items[key]
 	if !ok {
+		m.mu.Unlock()
 		return false
 	}
 
@@ -103,13 +137,36 @@ func (m *TTLMap) Remove(key string) bool {
 	}
 
 	delete(m.items, key)
+	atomic.AddInt64(&m.size, -1)
+
+	m.mu.Unlock()
 	return true
+}
+
+// RemoveMultiple removes multiple keys at once (more efficient than multiple Remove calls)
+func (m *TTLMap) RemoveMultiple(keys []string) int {
+	m.mu.Lock()
+
+	removed := 0
+	for _, key := range keys {
+		if itm, ok := m.items[key]; ok {
+			if itm.timer != nil {
+				itm.timer.Stop()
+			}
+			delete(m.items, key)
+			removed++
+		}
+	}
+
+	atomic.AddInt64(&m.size, -int64(removed))
+
+	m.mu.Unlock()
+	return removed
 }
 
 // RemoveAll clears all entries and cancels all timers
 func (m *TTLMap) RemoveAll() {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	for _, itm := range m.items {
 		if itm.timer != nil {
@@ -118,13 +175,14 @@ func (m *TTLMap) RemoveAll() {
 	}
 
 	m.items = make(map[string]*item)
+	atomic.StoreInt64(&m.size, 0)
+
+	m.mu.Unlock()
 }
 
-// Size returns the current number of items in the map
+// Size returns the current number of items (atomic, no lock needed)
 func (m *TTLMap) Size() int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return len(m.items)
+	return int(atomic.LoadInt64(&m.size))
 }
 
 // SetExpiry changes the expiration time of an existing key
@@ -149,6 +207,7 @@ func (m *TTLMap) SetExpiry(key string, expiresAt time.Time) bool {
 	if expiresAt.Before(now) || expiresAt.Equal(now) {
 		value := itm.value
 		delete(m.items, key)
+		atomic.AddInt64(&m.size, -1)
 		m.mu.Unlock()
 
 		if m.callback != nil {
@@ -168,6 +227,29 @@ func (m *TTLMap) SetExpiry(key string, expiresAt time.Time) bool {
 	return true
 }
 
+// Keys returns all current keys (snapshot)
+func (m *TTLMap) Keys() []string {
+	m.mu.RLock()
+	keys := make([]string, 0, len(m.items))
+	for k := range m.items {
+		keys = append(keys, k)
+	}
+	m.mu.RUnlock()
+	return keys
+}
+
+// ForEach iterates over all items with a callback (holds read lock during iteration)
+func (m *TTLMap) ForEach(fn func(key string, value interface{}) bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for k, itm := range m.items {
+		if !fn(k, itm.value) {
+			break
+		}
+	}
+}
+
 // expire handles key expiration (called by timer)
 func (m *TTLMap) expire(key string) {
 	m.mu.Lock()
@@ -179,6 +261,7 @@ func (m *TTLMap) expire(key string) {
 
 	value := itm.value
 	delete(m.items, key)
+	atomic.AddInt64(&m.size, -1)
 	m.mu.Unlock()
 
 	// Call callback outside of lock to avoid deadlocks

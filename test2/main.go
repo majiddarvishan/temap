@@ -1,8 +1,8 @@
 package main
 
 import (
+	"fmt"
 	"time"
-    "fmt"
 )
 
 func main() {
@@ -10,6 +10,11 @@ func main() {
 	ttlMap := New(func(key string, value interface{}) {
 		fmt.Printf("Key '%s' expired with value: %v\n", key, value)
 	})
+
+	// Create map with capacity hint for better performance
+	// ttlMap := NewWithCapacity(1000, func(key string, value interface{}) {
+	// 	fmt.Printf("Key '%s' expired with value: %v\n", key, value)
+	// })
 
 	// Add temporary entries
 	ttlMap.SetTemporary("session1", "user123", 5*time.Second)
@@ -51,8 +56,23 @@ func main() {
 		fmt.Println("immediately Key not found")
 	}
 
-    // Wait for expiration
+	// Wait for expiration
 	time.Sleep(10 * time.Second)
+
+	// Batch operations for better performance
+	keys := []string{"key1", "key2", "key3"}
+	values := ttlMap.GetMultiple(keys)
+
+    fmt.Println(values)
+
+	// Atomic size check (no lock)
+	fmt.Println("Size:", ttlMap.Size())
+
+	// Efficient iteration
+	ttlMap.ForEach(func(key string, value interface{}) bool {
+		fmt.Println(key, value)
+		return true // continue iterating
+	})
 
 	// Clear all
 	ttlMap.RemoveAll()
