@@ -1,6 +1,7 @@
 package main
 
 import (
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,90 +16,141 @@ type item struct {
 	timer      *time.Timer
 }
 
-// TTLMap is a thread-safe map with TTL support
+// shard represents a single map shard
+type shard struct {
+	mu    sync.RWMutex
+	items map[string]*item
+}
+
+// TTLMap is a sharded, thread-safe map with TTL support
 type TTLMap struct {
-	mu       sync.RWMutex
-	items    map[string]*item
+	shards   []*shard
+	mask     uint32
 	callback ExpirationCallback
 	size     int64 // atomic counter
+	pool     *sync.Pool
 }
 
-// New creates a new TTLMap with optional expiration callback
+// New creates a new TTLMap with optimal shard count (based on CPU cores)
 func New(callback ExpirationCallback) *TTLMap {
-	return &TTLMap{
-		items:    make(map[string]*item),
-		callback: callback,
-	}
+	return NewWithShards(0, 0, callback)
 }
 
-// NewWithCapacity creates a new TTLMap with pre-allocated capacity
+// NewWithCapacity creates a new TTLMap with pre-allocated capacity per shard
 func NewWithCapacity(capacity int, callback ExpirationCallback) *TTLMap {
-	return &TTLMap{
-		items:    make(map[string]*item, capacity),
-		callback: callback,
+	return NewWithShards(0, capacity, callback)
+}
+
+// NewWithShards creates a new TTLMap with specific shard count
+// shardCount of 0 means auto-detect based on CPU cores (recommended)
+// capacityPerShard of 0 means default capacity
+func NewWithShards(shardCount, capacityPerShard int, callback ExpirationCallback) *TTLMap {
+	if shardCount <= 0 {
+		// Auto-detect: use power of 2 based on CPU cores
+		cores := runtime.NumCPU()
+		shardCount = 1
+		for shardCount < cores*2 && shardCount < 256 {
+			shardCount *= 2
+		}
+	} else {
+		// Ensure power of 2 for efficient modulo
+		shardCount = nextPowerOf2(shardCount)
 	}
+
+	m := &TTLMap{
+		shards:   make([]*shard, shardCount),
+		mask:     uint32(shardCount - 1),
+		callback: callback,
+		pool: &sync.Pool{
+			New: func() interface{} {
+				return &item{}
+			},
+		},
+	}
+
+	for i := 0; i < shardCount; i++ {
+		if capacityPerShard > 0 {
+			m.shards[i] = &shard{items: make(map[string]*item, capacityPerShard)}
+		} else {
+			m.shards[i] = &shard{items: make(map[string]*item)}
+		}
+	}
+
+	return m
+}
+
+// getShard returns the shard for a given key using FNV-1a hash
+func (m *TTLMap) getShard(key string) *shard {
+	hash := fnv1a(key)
+	return m.shards[hash&m.mask]
 }
 
 // SetTemporary adds a key-value pair with TTL
 func (m *TTLMap) SetTemporary(key string, value interface{}, ttl time.Duration) {
-	m.mu.Lock()
+	s := m.getShard(key)
+	s.mu.Lock()
 
-	existing, exists := m.items[key]
+	existing, exists := s.items[key]
 
 	// Cancel existing timer if present
-	if exists && existing.timer != nil {
-		existing.timer.Stop()
-	}
-
-	expiration := time.Now().Add(ttl).UnixNano()
-
-	// Create timer for expiration
-	timer := time.AfterFunc(ttl, func() {
-		m.expire(key)
-	})
-
-	m.items[key] = &item{
-		value:      value,
-		expiration: expiration,
-		timer:      timer,
-	}
-
-	if !exists {
+	if exists {
+		if existing.timer != nil {
+			existing.timer.Stop()
+		}
+		// Reuse item struct
+		existing.value = value
+		existing.expiration = time.Now().Add(ttl).UnixNano()
+		existing.timer = time.AfterFunc(ttl, func() {
+			m.expire(key)
+		})
+	} else {
+		// Get item from pool
+		itm := m.pool.Get().(*item)
+		itm.value = value
+		itm.expiration = time.Now().Add(ttl).UnixNano()
+		itm.timer = time.AfterFunc(ttl, func() {
+			m.expire(key)
+		})
+		s.items[key] = itm
 		atomic.AddInt64(&m.size, 1)
 	}
 
-	m.mu.Unlock()
+	s.mu.Unlock()
 }
 
 // SetPermanent adds a key-value pair without expiration
 func (m *TTLMap) SetPermanent(key string, value interface{}) {
-	m.mu.Lock()
+	s := m.getShard(key)
+	s.mu.Lock()
 
-	existing, exists := m.items[key]
+	existing, exists := s.items[key]
 
 	// Cancel existing timer if present
-	if exists && existing.timer != nil {
-		existing.timer.Stop()
-	}
-
-	m.items[key] = &item{
-		value:      value,
-		expiration: 0,
-		timer:      nil,
-	}
-
-	if !exists {
+	if exists {
+		if existing.timer != nil {
+			existing.timer.Stop()
+		}
+		existing.value = value
+		existing.expiration = 0
+		existing.timer = nil
+	} else {
+		itm := m.pool.Get().(*item)
+		itm.value = value
+		itm.expiration = 0
+		itm.timer = nil
+		s.items[key] = itm
 		atomic.AddInt64(&m.size, 1)
 	}
 
-	m.mu.Unlock()
+	s.mu.Unlock()
 }
 
-// Get retrieves a value by key, returns nil if not found
+// Get retrieves a value by key
 func (m *TTLMap) Get(key string) (interface{}, bool) {
-	m.mu.RLock()
-	itm, ok := m.items[key]
-	m.mu.RUnlock()
+	s := m.getShard(key)
+	s.mu.RLock()
+	itm, ok := s.items[key]
+	s.mu.RUnlock()
 
 	if !ok {
 		return nil, false
@@ -107,28 +159,41 @@ func (m *TTLMap) Get(key string) (interface{}, bool) {
 	return itm.value, true
 }
 
-// GetMultiple retrieves multiple values at once (more efficient than multiple Get calls)
+// GetMultiple retrieves multiple values at once
 func (m *TTLMap) GetMultiple(keys []string) map[string]interface{} {
 	result := make(map[string]interface{}, len(keys))
 
-	m.mu.RLock()
+	// Group keys by shard to minimize lock acquisitions
+	shardKeys := make(map[uint32][]string)
 	for _, key := range keys {
-		if itm, ok := m.items[key]; ok {
-			result[key] = itm.value
-		}
+		hash := fnv1a(key)
+		idx := hash & m.mask
+		shardKeys[idx] = append(shardKeys[idx], key)
 	}
-	m.mu.RUnlock()
+
+	// Process each shard once
+	for idx, keys := range shardKeys {
+		s := m.shards[idx]
+		s.mu.RLock()
+		for _, key := range keys {
+			if itm, ok := s.items[key]; ok {
+				result[key] = itm.value
+			}
+		}
+		s.mu.RUnlock()
+	}
 
 	return result
 }
 
 // Remove deletes a key and cancels its timer
 func (m *TTLMap) Remove(key string) bool {
-	m.mu.Lock()
+	s := m.getShard(key)
+	s.mu.Lock()
 
-	itm, ok := m.items[key]
+	itm, ok := s.items[key]
 	if !ok {
-		m.mu.Unlock()
+		s.mu.Unlock()
 		return false
 	}
 
@@ -136,63 +201,91 @@ func (m *TTLMap) Remove(key string) bool {
 		itm.timer.Stop()
 	}
 
-	delete(m.items, key)
-	atomic.AddInt64(&m.size, -1)
+	delete(s.items, key)
+	s.mu.Unlock()
 
-	m.mu.Unlock()
+	// Return to pool
+	itm.value = nil
+	itm.timer = nil
+	m.pool.Put(itm)
+
+	atomic.AddInt64(&m.size, -1)
 	return true
 }
 
-// RemoveMultiple removes multiple keys at once (more efficient than multiple Remove calls)
+// RemoveMultiple removes multiple keys at once
 func (m *TTLMap) RemoveMultiple(keys []string) int {
-	m.mu.Lock()
+	// Group keys by shard
+	shardKeys := make(map[uint32][]string)
+	for _, key := range keys {
+		hash := fnv1a(key)
+		idx := hash & m.mask
+		shardKeys[idx] = append(shardKeys[idx], key)
+	}
 
 	removed := 0
-	for _, key := range keys {
-		if itm, ok := m.items[key]; ok {
-			if itm.timer != nil {
-				itm.timer.Stop()
+	itemsToPool := make([]*item, 0, len(keys))
+
+	// Process each shard once
+	for idx, keys := range shardKeys {
+		s := m.shards[idx]
+		s.mu.Lock()
+		for _, key := range keys {
+			if itm, ok := s.items[key]; ok {
+				if itm.timer != nil {
+					itm.timer.Stop()
+				}
+				delete(s.items, key)
+				itm.value = nil
+				itm.timer = nil
+				itemsToPool = append(itemsToPool, itm)
+				removed++
 			}
-			delete(m.items, key)
-			removed++
 		}
+		s.mu.Unlock()
+	}
+
+	// Return items to pool
+	for _, itm := range itemsToPool {
+		m.pool.Put(itm)
 	}
 
 	atomic.AddInt64(&m.size, -int64(removed))
-
-	m.mu.Unlock()
 	return removed
 }
 
 // RemoveAll clears all entries and cancels all timers
 func (m *TTLMap) RemoveAll() {
-	m.mu.Lock()
-
-	for _, itm := range m.items {
-		if itm.timer != nil {
-			itm.timer.Stop()
+	for _, s := range m.shards {
+		s.mu.Lock()
+		for _, itm := range s.items {
+			if itm.timer != nil {
+				itm.timer.Stop()
+			}
+			itm.value = nil
+			itm.timer = nil
+			m.pool.Put(itm)
 		}
+		s.items = make(map[string]*item)
+		s.mu.Unlock()
 	}
 
-	m.items = make(map[string]*item)
 	atomic.StoreInt64(&m.size, 0)
-
-	m.mu.Unlock()
 }
 
-// Size returns the current number of items (atomic, no lock needed)
+// Size returns the current number of items (lock-free)
 func (m *TTLMap) Size() int {
 	return int(atomic.LoadInt64(&m.size))
 }
 
 // SetExpiry changes the expiration time of an existing key
-// Returns false if key doesn't exist
 func (m *TTLMap) SetExpiry(key string, expiresAt time.Time) bool {
-	m.mu.Lock()
+	s := m.getShard(key)
+	s.mu.Lock()
 
-	itm, ok := m.items[key]
+	itm, ok := s.items[key]
 	if !ok {
-		m.mu.Unlock()
+		s.mu.Unlock()
 		return false
 	}
 
@@ -206,9 +299,14 @@ func (m *TTLMap) SetExpiry(key string, expiresAt time.Time) bool {
 	// If expiration is in the past, expire immediately
 	if expiresAt.Before(now) || expiresAt.Equal(now) {
 		value := itm.value
-		delete(m.items, key)
+		delete(s.items, key)
+		s.mu.Unlock()
+
+		itm.value = nil
+		itm.timer = nil
+		m.pool.Put(itm)
+
 		atomic.AddInt64(&m.size, -1)
-		m.mu.Unlock()
 
 		if m.callback != nil {
 			m.callback(key, value)
@@ -223,49 +321,89 @@ func (m *TTLMap) SetExpiry(key string, expiresAt time.Time) bool {
 		m.expire(key)
 	})
 
-	m.mu.Unlock()
+	s.mu.Unlock()
 	return true
 }
 
 // Keys returns all current keys (snapshot)
 func (m *TTLMap) Keys() []string {
-	m.mu.RLock()
-	keys := make([]string, 0, len(m.items))
-	for k := range m.items {
-		keys = append(keys, k)
+	keys := make([]string, 0, m.Size())
+	for _, s := range m.shards {
+		s.mu.RLock()
+		for k := range s.items {
+			keys = append(keys, k)
+		}
+		s.mu.RUnlock()
 	}
-	m.mu.RUnlock()
 	return keys
 }
 
-// ForEach iterates over all items with a callback (holds read lock during iteration)
+// ForEach iterates over all items with a callback
 func (m *TTLMap) ForEach(fn func(key string, value interface{}) bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	for k, itm := range m.items {
-		if !fn(k, itm.value) {
-			break
+	for _, s := range m.shards {
+		s.mu.RLock()
+		for k, itm := range s.items {
+			if !fn(k, itm.value) {
+				s.mu.RUnlock()
+				return
+			}
 		}
+		s.mu.RUnlock()
 	}
 }
 
 // expire handles key expiration (called by timer)
 func (m *TTLMap) expire(key string) {
-	m.mu.Lock()
-	itm, ok := m.items[key]
+	s := m.getShard(key)
+	s.mu.Lock()
+	itm, ok := s.items[key]
 	if !ok {
-		m.mu.Unlock()
+		s.mu.Unlock()
 		return
 	}
 
 	value := itm.value
-	delete(m.items, key)
+	delete(s.items, key)
+	s.mu.Unlock()
+
+	// Return to pool
+	itm.value = nil
+	itm.timer = nil
+	m.pool.Put(itm)
+
 	atomic.AddInt64(&m.size, -1)
-	m.mu.Unlock()
 
 	// Call callback outside of lock to avoid deadlocks
 	if m.callback != nil {
 		m.callback(key, value)
 	}
 }
+
+// fnv1a implements FNV-1a hash (fast, good distribution)
+func fnv1a(s string) uint32 {
+	const (
+		offset32 = 2166136261
+		prime32  = 16777619
+	)
+	hash := uint32(offset32)
+	for i := 0; i < len(s); i++ {
+		hash ^= uint32(s[i])
+		hash *= prime32
+	}
+	return hash
+}
+
+// nextPowerOf2 returns the next power of 2 >= n
+func nextPowerOf2(n int) int {
+	if n <= 1 {
+		return 1
+	}
+	n--
+	n |= n >> 1
+	n |= n >> 2
+	n |= n >> 4
+	n |= n >> 8
+	n |= n >> 16
+	return n + 1
+}
+
