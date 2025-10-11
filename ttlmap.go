@@ -1,4 +1,4 @@
-package main
+package ttlmap
 
 import (
 	"runtime"
@@ -279,6 +279,7 @@ func (m *TTLMap) Size() int {
 }
 
 // SetExpiry changes the expiration time of an existing key
+// Returns false if key doesn't exist
 func (m *TTLMap) SetExpiry(key string, expiresAt time.Time) bool {
 	s := m.getShard(key)
 	s.mu.Lock()

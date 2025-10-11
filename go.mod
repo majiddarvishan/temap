@@ -1,3 +1,5 @@
-module github.com/majiddarvishan/temap
+replace github.com/yourusername/ttlmap => /home/darvishan/tmp/go/ttlmap
 
-go 1.21.3
+module github.com/yourusername/ttlmap
+
+go 1.25.0
