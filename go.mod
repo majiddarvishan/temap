@@ -1,5 +1,5 @@
-replace github.com/yourusername/ttlmap => /home/darvishan/tmp/go/ttlmap
+replace github.com/majiddarvishan/ttlmap => /home/darvishan/workspace/golang/temap
 
-module github.com/yourusername/ttlmap
+module github.com/majiddarvishan/ttlmap
 
-go 1.25.0
+go 1.20

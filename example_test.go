@@ -3,7 +3,7 @@ package ttlmap_test
 import (
 	"fmt"
 	"time"
-    "github.com/yourusername/ttlmap"
+    "github.com/majiddarvishan/ttlmap"
 )
 
 // Example demonstrates basic usage of TTLMap

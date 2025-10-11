@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 	"time"
-    "github.com/yourusername/ttlmap"
+    "github.com/majiddarvishan/ttlmap"
 )
 
 func BenchmarkSize(b *testing.B) {

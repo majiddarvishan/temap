@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"time"
-	"github.com/yourusername/ttlmap"
+	"github.com/majiddarvishan/ttlmap"
 )
 
 type Cache struct {

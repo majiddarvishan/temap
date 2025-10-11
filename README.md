@@ -15,7 +15,7 @@ A sharded, thread-safe map with automatic expiration and optional callbacks. Opt
 ## Installation
 
 ```bash
-go get github.com/yourusername/ttlmap
+go get github.com/majiddarvishan/ttlmap
 ```
 
 ## Quick Start
@@ -26,7 +26,7 @@ package main
 import (
     "fmt"
     "time"
-    "github.com/yourusername/ttlmap"
+    "github.com/majiddarvishan/ttlmap"
 )
 
 func main() {
@@ -287,7 +287,7 @@ go doc ttlmap.SetTemporary
 
 # Start documentation server
 godoc -http=:6060
-# Then visit: http://localhost:6060/pkg/github.com/yourusername/ttlmap/
+# Then visit: http://localhost:6060/pkg/github.com/majiddarvishan/ttlmap/
 ```
 
 ## 🎯 Common Commands Cheatsheet
