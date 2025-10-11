@@ -150,13 +150,14 @@ func (m *TTLMap) Get(key string) (interface{}, bool) {
 	s := m.getShard(key)
 	s.mu.RLock()
 	itm, ok := s.items[key]
-	s.mu.RUnlock()
-
 	if !ok {
+		s.mu.RUnlock()
 		return nil, false
 	}
+	value := itm.value
+	s.mu.RUnlock()
 
-	return itm.value, true
+	return value, true
 }
 
 // GetMultiple retrieves multiple values at once
@@ -407,4 +408,3 @@ func nextPowerOf2(n int) int {
 	n |= n >> 16
 	return n + 1
 }
-
