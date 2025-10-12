@@ -42,7 +42,7 @@ echo "Bumping version from v${CURRENT_VERSION} to ${NEW_VERSION}"
 
 # Update version.go
 cat > version.go <<EOF
-package ttlmap
+package temap
 
 // Version information
 const (

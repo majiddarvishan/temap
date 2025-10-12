@@ -1,15 +1,16 @@
-package ttlmap_test
+package temap_test
 
 import (
 	"fmt"
 	"sync"
 	"testing"
 	"time"
-    "github.com/majiddarvishan/ttlmap"
+
+	"github.com/majiddarvishan/temap"
 )
 
 func BenchmarkSize(b *testing.B) {
-	m := ttlmap.NewWithCapacity(1000, nil)
+	m := temap.NewWithCapacity(1000, nil)
 
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("key%d", i)
@@ -23,7 +24,7 @@ func BenchmarkSize(b *testing.B) {
 }
 
 func BenchmarkSetExpiry(b *testing.B) {
-	m := ttlmap.NewWithCapacity(1000, nil)
+	m := temap.NewWithCapacity(1000, nil)
 
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("key%d", i)
@@ -43,7 +44,7 @@ func BenchmarkShardComparison(b *testing.B) {
 
 	for _, shards := range shardCounts {
 		b.Run(fmt.Sprintf("Shards_%d", shards), func(b *testing.B) {
-			m := ttlmap.NewWithShards(shards, 100, nil)
+			m := temap.NewWithShards(shards, 100, nil)
 
 			for i := 0; i < 1000; i++ {
 				key := fmt.Sprintf("key%d", i)
@@ -69,7 +70,7 @@ func BenchmarkShardComparison(b *testing.B) {
 
 func BenchmarkMemoryAllocation(b *testing.B) {
 	b.Run("WithPooling", func(b *testing.B) {
-		m := ttlmap.New(nil)
+		m := temap.New(nil)
 		b.ReportAllocs()
 		b.ResetTimer()
 
@@ -91,7 +92,7 @@ func BenchmarkWithCallback(b *testing.B) {
 	}
 
 	b.Run("WithCallback", func(b *testing.B) {
-		m := ttlmap.New(callback)
+		m := temap.New(callback)
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
@@ -101,7 +102,7 @@ func BenchmarkWithCallback(b *testing.B) {
 	})
 
 	b.Run("WithoutCallback", func(b *testing.B) {
-		m := ttlmap.New(nil)
+		m := temap.New(nil)
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
@@ -112,7 +113,7 @@ func BenchmarkWithCallback(b *testing.B) {
 }
 
 func BenchmarkGetMultiple_vs_Individual(b *testing.B) {
-	m := ttlmap.NewWithCapacity(1000, nil)
+	m := temap.NewWithCapacity(1000, nil)
 
 	for i := 0; i < 1000; i++ {
 		key := fmt.Sprintf("key%d", i)

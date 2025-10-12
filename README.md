@@ -1,4 +1,4 @@
-# TTL Map - High Performance Time-To-Live Map for Go
+# TE Map - High Performance Time Expired Map for Go
 
 A sharded, thread-safe map with automatic expiration and optional callbacks. Optimized for high-concurrency scenarios.
 
@@ -15,7 +15,7 @@ A sharded, thread-safe map with automatic expiration and optional callbacks. Opt
 ## Installation
 
 ```bash
-go get github.com/majiddarvishan/ttlmap
+go get github.com/majiddarvishan/temap
 ```
 
 ## Quick Start
@@ -26,12 +26,12 @@ package main
 import (
     "fmt"
     "time"
-    "github.com/majiddarvishan/ttlmap"
+    "github.com/majiddarvishan/temap"
 )
 
 func main() {
     // Create map with expiration callback
-    m := ttlmap.New(func(key string, value interface{}) {
+    m := temap.New(func(key string, value interface{}) {
         fmt.Printf("Key '%s' expired\n", key)
     })
 
@@ -60,13 +60,13 @@ func main() {
 
 ```go
 // Auto-detect optimal shard count
-m := ttlmap.New(callback)
+m := temap.New(callback)
 
 // With pre-allocated capacity
-m := ttlmap.NewWithCapacity(10000, callback)
+m := temap.NewWithCapacity(10000, callback)
 
 // Custom shard count for fine-tuning
-m := ttlmap.NewWithShards(32, 1000, callback)
+m := temap.NewWithShards(32, 1000, callback)
 ```
 
 ### Basic Operations
@@ -150,12 +150,12 @@ Sharding Performance (concurrent):
 
 ```go
 type SessionStore struct {
-    sessions *ttlmap.TTLMap
+    sessions *temap.temap
 }
 
 func NewSessionStore() *SessionStore {
     return &SessionStore{
-        sessions: ttlmap.NewWithCapacity(10000, func(key string, value interface{}) {
+        sessions: temap.NewWithCapacity(10000, func(key string, value interface{}) {
             log.Printf("Session %s expired", key)
         }),
     }
@@ -180,13 +180,13 @@ func (s *SessionStore) GetSession(sessionID string) (interface{}, bool) {
 
 ```go
 type RateLimiter struct {
-    requests *ttlmap.TTLMap
+    requests *temap.temap
     limit    int
 }
 
 func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
     return &RateLimiter{
-        requests: ttlmap.New(nil),
+        requests: temap.New(nil),
         limit:    limit,
     }
 }
@@ -264,14 +264,14 @@ go test -coverprofile=coverage.out
 go tool cover -func=coverage.out
 
 # Expected output:
-ttlmap.go:50:   New                     100.0%
-ttlmap.go:54:   NewWithCapacity         100.0%
-ttlmap.go:58:   NewWithShards           100.0%
-ttlmap.go:88:   getShard                100.0%
-ttlmap.go:93:   SetTemporary            100.0%
-ttlmap.go:118:  SetPermanent            100.0%
-ttlmap.go:142:  Get                     100.0%
-ttlmap.go:154:  GetMultiple             100.0%
+temap.go:50:   New                     100.0%
+temap.go:54:   NewWithCapacity         100.0%
+temap.go:58:   NewWithShards           100.0%
+temap.go:88:   getShard                100.0%
+temap.go:93:   SetTemporary            100.0%
+temap.go:118:  SetPermanent            100.0%
+temap.go:142:  Get                     100.0%
+temap.go:154:  GetMultiple             100.0%
 ...
 total:          (statements)            95.2%
 ```
@@ -283,11 +283,11 @@ total:          (statements)            95.2%
 go doc -all
 
 # View specific function
-go doc ttlmap.SetTemporary
+go doc temap.SetTemporary
 
 # Start documentation server
 godoc -http=:6060
-# Then visit: http://localhost:6060/pkg/github.com/majiddarvishan/ttlmap/
+# Then visit: http://localhost:6060/pkg/github.com/majiddarvishan/temap/
 ```
 
 ## 🎯 Common Commands Cheatsheet
@@ -323,6 +323,10 @@ go mod verify
 ## Thread Safety
 
 All operations are thread-safe and can be called from multiple goroutines concurrently.
+
+## Author
+[Majid Darvishan](majiddarvishan@outlook.com)
+
 
 ## License
 

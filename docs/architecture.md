@@ -1,8 +1,8 @@
-# TTLMap Architecture
+# temap Architecture
 
 ## Overview
 
-TTLMap is a high-performance, sharded, time-to-live map implementation in Go designed for concurrent access patterns. This document explains the architectural decisions and internal workings.
+temap is a high-performance, sharded, time-to-live map implementation in Go designed for concurrent access patterns. This document explains the architectural decisions and internal workings.
 
 ## Table of Contents
 
@@ -17,10 +17,10 @@ TTLMap is a high-performance, sharded, time-to-live map implementation in Go des
 
 ## Core Components
 
-### 1. TTLMap Structure
+### 1. temap Structure
 
 ```go
-type TTLMap struct {
+type temap struct {
     shards   []*shard           // Array of shards for parallel access
     mask     uint32             // Bitmask for efficient shard selection
     callback ExpirationCallback // Optional expiration callback
@@ -115,7 +115,7 @@ func fnv1a(s string) uint32 {
     return hash
 }
 
-func (m *TTLMap) getShard(key string) *shard {
+func (m *temap) getShard(key string) *shard {
     hash := fnv1a(key)
     return m.shards[hash & m.mask]  // Efficient modulo
 }
@@ -170,7 +170,7 @@ Remove()/expire() -> Clear fields -> pool.Put() -> Available for reuse
 ### Memory Layout
 
 ```
-TTLMap (96 bytes)
+temap (96 bytes)
 ├── shards: []*shard (16 shards × 8 bytes = 128 bytes)
 ├── mask: uint32 (4 bytes)
 ├── callback: func (16 bytes)
@@ -326,7 +326,7 @@ existing.timer = time.AfterFunc(ttl, func() {
 ```go
 size int64  // Updated with atomic operations
 
-func (m *TTLMap) Size() int {
+func (m *temap) Size() int {
     return int(atomic.LoadInt64(&m.size))  // No lock!
 }
 ```
@@ -486,7 +486,7 @@ Optimal: 16-64 shards for most workloads
 
 ## Conclusion
 
-TTLMap achieves high performance through:
+temap achieves high performance through:
 - **Sharding**: Parallel access without contention
 - **Per-item timers**: Precise expiration without scanning
 - **Object pooling**: Reduced GC pressure

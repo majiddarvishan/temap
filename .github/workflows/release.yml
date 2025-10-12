@@ -53,4 +53,4 @@ jobs:
 
       - name: Update pkg.go.dev
         run: |
-          curl https://proxy.golang.org/github.com/majiddarvishan/ttlmap/@v/${{ steps.version.outputs.VERSION }}.info
+          curl https://proxy.golang.org/github.com/majiddarvishan/temap/@v/${{ steps.version.outputs.VERSION }}.info

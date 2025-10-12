@@ -3,7 +3,8 @@ package main
 import (
 	"fmt"
 	"time"
-	"github.com/majiddarvishan/ttlmap"
+
+	"github.com/majiddarvishan/temap"
 )
 
 type Session struct {
@@ -13,14 +14,14 @@ type Session struct {
 }
 
 type SessionStore struct {
-	sessions *ttlmap.TTLMap
+	sessions *temap.temap
 	ttl      time.Duration
 }
 
 func NewSessionStore(ttl time.Duration) *SessionStore {
 	return &SessionStore{
 		ttl: ttl,
-		sessions: ttlmap.NewWithCapacity(1000, func(key string, value interface{}) {
+		sessions: temap.NewWithCapacity(1000, func(key string, value interface{}) {
 			session := value.(*Session)
 			fmt.Printf("Session expired: user=%s, duration=%v\n",
 				session.UserID, time.Since(session.CreatedAt))

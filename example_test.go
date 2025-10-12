@@ -1,14 +1,15 @@
-package ttlmap_test
+package temap_test
 
 import (
 	"fmt"
 	"time"
-    "github.com/majiddarvishan/ttlmap"
+
+	"github.com/majiddarvishan/temap"
 )
 
-// Example demonstrates basic usage of TTLMap
+// Example demonstrates basic usage of temap
 func Example() {
-	m := ttlmap.New(func(key string, value interface{}) {
+	m := temap.New(func(key string, value interface{}) {
 		fmt.Printf("Expired: %s\n", key)
 	})
 
@@ -32,7 +33,7 @@ func Example() {
 
 // Example_batchOperations demonstrates batch operations
 func Example_batchOperations() {
-	m := ttlmap.NewWithCapacity(100, nil)
+	m := temap.NewWithCapacity(100, nil)
 
 	// Set multiple items
 	for i := 0; i < 10; i++ {
@@ -56,7 +57,7 @@ func Example_batchOperations() {
 
 // Example_setExpiry demonstrates changing TTL
 func Example_setExpiry() {
-	m := ttlmap.New(nil)
+	m := temap.New(nil)
 
 	// Set initial TTL
 	m.SetTemporary("session", "active", 5*time.Second)
@@ -73,7 +74,7 @@ func Example_setExpiry() {
 
 // Example_forEach demonstrates iteration
 func Example_forEach() {
-	m := ttlmap.New(nil)
+	m := temap.New(nil)
 
 	m.SetPermanent("user1", "Alice")
 	m.SetPermanent("user2", "Bob")
@@ -90,7 +91,7 @@ func Example_forEach() {
 // Example_highPerformance demonstrates high-performance configuration
 func Example_highPerformance() {
 	// For maximum performance with known workload
-	m := ttlmap.NewWithShards(32, 1000, nil)
+	m := temap.NewWithShards(32, 1000, nil)
 
 	// Pre-populate
 	for i := 0; i < 10000; i++ {
@@ -106,7 +107,7 @@ func Example_highPerformance() {
 // Example_sessionManagement demonstrates a real-world use case
 func Example_sessionManagement() {
 	// Create session store with 30 minute TTL
-	sessions := ttlmap.New(func(key string, value interface{}) {
+	sessions := temap.New(func(key string, value interface{}) {
 		fmt.Printf("Session %s expired\n", key)
 	})
 
@@ -128,7 +129,7 @@ func Example_sessionManagement() {
 
 // Example_cache demonstrates cache implementation
 func Example_cache() {
-	cache := ttlmap.NewWithCapacity(1000, func(key string, value interface{}) {
+	cache := temap.NewWithCapacity(1000, func(key string, value interface{}) {
 		fmt.Printf("Cache miss: %s\n", key)
 	})
 
@@ -150,7 +151,7 @@ func Example_cache() {
 
 // Example_rateLimiter demonstrates rate limiting
 func Example_rateLimiter() {
-	limiter := ttlmap.New(nil)
+	limiter := temap.New(nil)
 	maxRequests := 5
 	window := 1 * time.Minute
 
@@ -189,7 +190,7 @@ func Example_rateLimiter() {
 
 // Example_permanentAndTemporary demonstrates mixing permanent and temporary keys
 func Example_permanentAndTemporary() {
-	m := ttlmap.New(nil)
+	m := temap.New(nil)
 
 	// Permanent configuration
 	m.SetPermanent("app_name", "MyApp")
@@ -207,7 +208,7 @@ func Example_permanentAndTemporary() {
 
 // Example_updateExisting demonstrates updating existing keys
 func Example_updateExisting() {
-	m := ttlmap.New(nil)
+	m := temap.New(nil)
 
 	// Set initial value
 	m.SetTemporary("counter", 1, 10*time.Second)

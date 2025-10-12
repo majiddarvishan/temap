@@ -1,8 +1,8 @@
-# TTLMap Performance Guide
+# temap Performance Guide
 
 ## Overview
 
-This document provides detailed performance characteristics, benchmarks, tuning guidelines, and optimization strategies for TTLMap.
+This document provides detailed performance characteristics, benchmarks, tuning guidelines, and optimization strategies for temap.
 
 ## Table of Contents
 
@@ -188,16 +188,16 @@ Memory = S × 72 + N × (180 + avg_key_size + avg_value_size)
 **Rule of thumb:**
 ```go
 // Default (recommended for most cases)
-m := ttlmap.New(callback)  // Auto: 2 × NumCPU
+m := temap.New(callback)  // Auto: 2 × NumCPU
 
 // Low contention workload
-m := ttlmap.NewWithShards(8, capacity, callback)
+m := temap.NewWithShards(8, capacity, callback)
 
 // High contention workload
-m := ttlmap.NewWithShards(64, capacity, callback)
+m := temap.NewWithShards(64, capacity, callback)
 
 // Memory-constrained
-m := ttlmap.NewWithShards(4, capacity, callback)
+m := temap.NewWithShards(4, capacity, callback)
 ```
 
 **Decision Matrix:**
@@ -226,12 +226,12 @@ With pre-allocation:
 **Guidelines:**
 ```go
 // If you know approximate size
-m := ttlmap.NewWithCapacity(expectedSize, callback)
+m := temap.NewWithCapacity(expectedSize, callback)
 
 // Divide by shard count for per-shard capacity
 shards := 32
 perShardCapacity := expectedSize / shards
-m := ttlmap.NewWithShards(shards, perShardCapacity, callback)
+m := temap.NewWithShards(shards, perShardCapacity, callback)
 ```
 
 ### 3. Batch Operations
@@ -260,14 +260,14 @@ Callbacks run outside the lock but can impact performance:
 
 ```go
 // SLOW: Heavy callback
-m := ttlmap.New(func(key string, value interface{}) {
+m := temap.New(func(key string, value interface{}) {
     // Database write
     db.LogExpiration(key, value)  // Blocks timer goroutine!
 })
 
 // FAST: Async callback
 expiredChan := make(chan string, 1000)
-m := ttlmap.New(func(key string, value interface{}) {
+m := temap.New(func(key string, value interface{}) {
     select {
     case expiredChan <- key:
     default:
@@ -308,7 +308,7 @@ for {
 }
 
 // BETTER: Event-driven with callback
-m := ttlmap.New(func(key string, value interface{}) {
+m := temap.New(func(key string, value interface{}) {
     if m.Size() < 1000 {
         // Do something
     }
@@ -354,13 +354,13 @@ m.SetTemporary("key", &LargeStruct{}, ttl)  // Only copies pointer
 
 ```go
 // ANTI-PATTERN: Blocking callback
-m := ttlmap.New(func(key string, value interface{}) {
+m := temap.New(func(key string, value interface{}) {
     http.Post("http://example.com/expired", ...)  // Blocks!
 })
 
 // BETTER: Non-blocking callback
 expireChan := make(chan string, 100)
-m := ttlmap.New(func(key string, value interface{}) {
+m := temap.New(func(key string, value interface{}) {
     select {
     case expireChan <- key:
     default:
@@ -410,7 +410,7 @@ func main() {
         http.ListenAndServe("localhost:6060", nil)
     }()
 
-    // Your code using TTLMap
+    // Your code using temap
 }
 ```
 
@@ -422,7 +422,7 @@ curl http://localhost:6060/debug/pprof/profile?seconds=30 > cpu.prof
 # Analyze
 go tool pprof cpu.prof
 (pprof) top10
-(pprof) list ttlmap.Get
+(pprof) list temap.Get
 ```
 
 ### Memory Profiling
@@ -434,7 +434,7 @@ curl http://localhost:6060/debug/pprof/heap > heap.prof
 # Analyze
 go tool pprof heap.prof
 (pprof) top10
-(pprof) list ttlmap
+(pprof) list temap
 ```
 
 ### Trace Analysis
@@ -560,7 +560,7 @@ Performance:
 ### vs sync.Map
 
 ```
-TTLMap:
+temap:
 - Get:    25ns (concurrent)
 - Set:    120ns (concurrent)
 - Supports TTL
@@ -573,13 +573,13 @@ sync.Map:
 - Single map with complex internals
 ```
 
-**Use TTLMap when:** You need TTL, callbacks, or >1M items
+**Use temap when:** You need TTL, callbacks, or >1M items
 **Use sync.Map when:** No TTL needed and <100K items
 
 ### vs Map + Mutex
 
 ```
-TTLMap (16 shards):
+temap (16 shards):
 - Get:    25ns (concurrent)
 - Set:    120ns (concurrent)
 
@@ -589,13 +589,13 @@ map + sync.RWMutex:
 - Severe contention with >4 threads
 ```
 
-**TTLMap is 5-10x faster under concurrent load**
+**temap is 5-10x faster under concurrent load**
 
 ---
 
 ## Conclusion
 
-TTLMap delivers:
+temap delivers:
 - ✅ **Sub-100ns latency** for most operations
 - ✅ **Linear scaling** with CPU cores
 - ✅ **Predictable memory** usage

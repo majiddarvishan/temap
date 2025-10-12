@@ -3,18 +3,19 @@ package main
 import (
 	"fmt"
 	"time"
-	"github.com/majiddarvishan/ttlmap"
+
+	"github.com/majiddarvishan/temap"
 )
 
 type RateLimiter struct {
-	requests *ttlmap.TTLMap
+	requests *temap.temap
 	limit    int
 	window   time.Duration
 }
 
 func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 	return &RateLimiter{
-		requests: ttlmap.New(func(key string, value interface{}) {
+		requests: temap.New(func(key string, value interface{}) {
 			fmt.Printf("Rate limit window expired for: %s\n", key)
 		}),
 		limit:  limit,

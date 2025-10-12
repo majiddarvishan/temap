@@ -3,18 +3,19 @@ package main
 import (
 	"fmt"
 	"time"
-	"github.com/majiddarvishan/ttlmap"
+
+	"github.com/majiddarvishan/temap"
 )
 
 type Cache struct {
-	data *ttlmap.TTLMap
-	hits int64
+	data   *temap.temap
+	hits   int64
 	misses int64
 }
 
 func NewCache() *Cache {
 	return &Cache{
-		data: ttlmap.NewWithCapacity(10000, func(key string, value interface{}) {
+		data: temap.NewWithCapacity(10000, func(key string, value interface{}) {
 			fmt.Printf("Cache entry expired: %s\n", key)
 		}),
 	}

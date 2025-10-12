@@ -1,4 +1,4 @@
-package ttlmap
+package temap
 
 import (
 	"runtime"
@@ -22,8 +22,8 @@ type shard struct {
 	items map[string]*item
 }
 
-// TTLMap is a sharded, thread-safe map with TTL support
-type TTLMap struct {
+// temap is a sharded, thread-safe map with TTL support
+type temap struct {
 	shards   []*shard
 	mask     uint32
 	callback ExpirationCallback
@@ -31,20 +31,20 @@ type TTLMap struct {
 	pool     *sync.Pool
 }
 
-// New creates a new TTLMap with optimal shard count (based on CPU cores)
-func New(callback ExpirationCallback) *TTLMap {
+// New creates a new temap with optimal shard count (based on CPU cores)
+func New(callback ExpirationCallback) *temap {
 	return NewWithShards(0, 0, callback)
 }
 
-// NewWithCapacity creates a new TTLMap with pre-allocated capacity per shard
-func NewWithCapacity(capacity int, callback ExpirationCallback) *TTLMap {
+// NewWithCapacity creates a new temap with pre-allocated capacity per shard
+func NewWithCapacity(capacity int, callback ExpirationCallback) *temap {
 	return NewWithShards(0, capacity, callback)
 }
 
-// NewWithShards creates a new TTLMap with specific shard count
+// NewWithShards creates a new temap with specific shard count
 // shardCount of 0 means auto-detect based on CPU cores (recommended)
 // capacityPerShard of 0 means default capacity
-func NewWithShards(shardCount, capacityPerShard int, callback ExpirationCallback) *TTLMap {
+func NewWithShards(shardCount, capacityPerShard int, callback ExpirationCallback) *temap {
 	if shardCount <= 0 {
 		// Auto-detect: use power of 2 based on CPU cores
 		cores := runtime.NumCPU()
@@ -57,7 +57,7 @@ func NewWithShards(shardCount, capacityPerShard int, callback ExpirationCallback
 		shardCount = nextPowerOf2(shardCount)
 	}
 
-	m := &TTLMap{
+	m := &temap{
 		shards:   make([]*shard, shardCount),
 		mask:     uint32(shardCount - 1),
 		callback: callback,
@@ -80,13 +80,13 @@ func NewWithShards(shardCount, capacityPerShard int, callback ExpirationCallback
 }
 
 // getShard returns the shard for a given key using FNV-1a hash
-func (m *TTLMap) getShard(key string) *shard {
+func (m *temap) getShard(key string) *shard {
 	hash := fnv1a(key)
 	return m.shards[hash&m.mask]
 }
 
 // SetTemporary adds a key-value pair with TTL
-func (m *TTLMap) SetTemporary(key string, value interface{}, ttl time.Duration) {
+func (m *temap) SetTemporary(key string, value interface{}, ttl time.Duration) {
 	s := m.getShard(key)
 	s.mu.Lock()
 
@@ -119,7 +119,7 @@ func (m *TTLMap) SetTemporary(key string, value interface{}, ttl time.Duration) 
 }
 
 // SetPermanent adds a key-value pair without expiration
-func (m *TTLMap) SetPermanent(key string, value interface{}) {
+func (m *temap) SetPermanent(key string, value interface{}) {
 	s := m.getShard(key)
 	s.mu.Lock()
 
@@ -146,7 +146,7 @@ func (m *TTLMap) SetPermanent(key string, value interface{}) {
 }
 
 // Get retrieves a value by key
-func (m *TTLMap) Get(key string) (interface{}, bool) {
+func (m *temap) Get(key string) (interface{}, bool) {
 	s := m.getShard(key)
 	s.mu.RLock()
 	itm, ok := s.items[key]
@@ -161,7 +161,7 @@ func (m *TTLMap) Get(key string) (interface{}, bool) {
 }
 
 // GetMultiple retrieves multiple values at once
-func (m *TTLMap) GetMultiple(keys []string) map[string]interface{} {
+func (m *temap) GetMultiple(keys []string) map[string]interface{} {
 	result := make(map[string]interface{}, len(keys))
 
 	// Group keys by shard to minimize lock acquisitions
@@ -188,7 +188,7 @@ func (m *TTLMap) GetMultiple(keys []string) map[string]interface{} {
 }
 
 // Remove deletes a key and cancels its timer
-func (m *TTLMap) Remove(key string) bool {
+func (m *temap) Remove(key string) bool {
 	s := m.getShard(key)
 	s.mu.Lock()
 
@@ -215,7 +215,7 @@ func (m *TTLMap) Remove(key string) bool {
 }
 
 // RemoveMultiple removes multiple keys at once
-func (m *TTLMap) RemoveMultiple(keys []string) int {
+func (m *temap) RemoveMultiple(keys []string) int {
 	// Group keys by shard
 	shardKeys := make(map[uint32][]string)
 	for _, key := range keys {
@@ -256,7 +256,7 @@ func (m *TTLMap) RemoveMultiple(keys []string) int {
 }
 
 // RemoveAll clears all entries and cancels all timers
-func (m *TTLMap) RemoveAll() {
+func (m *temap) RemoveAll() {
 	for _, s := range m.shards {
 		s.mu.Lock()
 		for _, itm := range s.items {
@@ -275,13 +275,13 @@ func (m *TTLMap) RemoveAll() {
 }
 
 // Size returns the current number of items (lock-free)
-func (m *TTLMap) Size() int {
+func (m *temap) Size() int {
 	return int(atomic.LoadInt64(&m.size))
 }
 
 // SetExpiry changes the expiration time of an existing key
 // Returns false if key doesn't exist
-func (m *TTLMap) SetExpiry(key string, expiresAt time.Time) bool {
+func (m *temap) SetExpiry(key string, expiresAt time.Time) bool {
 	s := m.getShard(key)
 	s.mu.Lock()
 
@@ -328,7 +328,7 @@ func (m *TTLMap) SetExpiry(key string, expiresAt time.Time) bool {
 }
 
 // Keys returns all current keys (snapshot)
-func (m *TTLMap) Keys() []string {
+func (m *temap) Keys() []string {
 	keys := make([]string, 0, m.Size())
 	for _, s := range m.shards {
 		s.mu.RLock()
@@ -341,7 +341,7 @@ func (m *TTLMap) Keys() []string {
 }
 
 // ForEach iterates over all items with a callback
-func (m *TTLMap) ForEach(fn func(key string, value interface{}) bool) {
+func (m *temap) ForEach(fn func(key string, value interface{}) bool) {
 	for _, s := range m.shards {
 		s.mu.RLock()
 		for k, itm := range s.items {
@@ -355,7 +355,7 @@ func (m *TTLMap) ForEach(fn func(key string, value interface{}) bool) {
 }
 
 // expire handles key expiration (called by timer)
-func (m *TTLMap) expire(key string) {
+func (m *temap) expire(key string) {
 	s := m.getShard(key)
 	s.mu.Lock()
 	itm, ok := s.items[key]

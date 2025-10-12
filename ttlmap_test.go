@@ -1,4 +1,4 @@
-package ttlmap
+package temap
 
 import (
 	"fmt"
@@ -328,5 +328,3 @@ func TestDifferentShardCounts(t *testing.T) {
 		})
 	}
 }
-
-

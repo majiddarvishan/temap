@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide helps you migrate from other map/cache solutions to TTLMap, covering common scenarios, gotchas, and best practices.
+This guide helps you migrate from other map/cache solutions to temap, covering common scenarios, gotchas, and best practices.
 
 ## Table of Contents
 
@@ -72,18 +72,18 @@ func (c *Cache) cleanup() {
 }
 ```
 
-### After: Using TTLMap
+### After: Using temap
 
 ```go
-import "github.com/yourusername/ttlmap"
+import "github.com/yourusername/temap"
 
 type Cache struct {
-    items *ttlmap.TTLMap
+    items *temap.temap
 }
 
 func NewCache() *Cache {
     return &Cache{
-        items: ttlmap.NewWithCapacity(10000, func(key string, value interface{}) {
+        items: temap.NewWithCapacity(10000, func(key string, value interface{}) {
             // Optional: Log expiration
             log.Printf("Key %s expired", key)
         }),
@@ -145,10 +145,10 @@ cache.Range(func(key, value interface{}) bool {
 })
 ```
 
-### After: TTLMap
+### After: temap
 
 ```go
-cache := ttlmap.New(nil)
+cache := temap.New(nil)
 
 // Store with TTL
 cache.SetTemporary(key, value, 5*time.Minute)
@@ -173,7 +173,7 @@ cache.ForEach(func(key string, value interface{}) bool {
 
 ### Key Differences
 
-| Feature | sync.Map | TTLMap |
+| Feature | sync.Map | temap |
 |---------|----------|---------|
 | TTL Support | ❌ No | ✅ Yes |
 | Key Type | interface{} | string |
@@ -261,12 +261,12 @@ c.OnEvicted(func(key string, value interface{}) {
 })
 ```
 
-### After: TTLMap
+### After: temap
 
 ```go
-import "github.com/yourusername/ttlmap"
+import "github.com/yourusername/temap"
 
-m := ttlmap.New(func(key string, value interface{}) {
+m := temap.New(func(key string, value interface{}) {
     // Expiration callback (like OnEvicted)
 })
 
@@ -295,7 +295,7 @@ m.RemoveAll()
 
 ### Migration Mapping
 
-| go-cache | TTLMap |
+| go-cache | temap |
 |----------|--------|
 | `New(defaultTTL, cleanupInterval)` | `New(callback)` |
 | `Set(k, v, duration)` | `SetTemporary(k, v, duration)` |
@@ -307,7 +307,7 @@ m.RemoveAll()
 | `OnEvicted(func)` | Callback in `New(func)` |
 | `GetWithExpiration(k)` | Not directly supported* |
 
-\* TTLMap doesn't expose expiration time. Use `SetExpiry()` to change it.
+\* temap doesn't expose expiration time. Use `SetExpiry()` to change it.
 
 ### Behavioral Differences
 
@@ -317,8 +317,8 @@ m.RemoveAll()
 c := cache.New(5*time.Minute, 10*time.Minute)
 c.Set("key", "value", cache.DefaultExpiration)  // Uses 5 min
 
-// TTLMap: No default, must specify each time
-m := ttlmap.New(nil)
+// temap: No default, must specify each time
+m := temap.New(nil)
 defaultTTL := 5 * time.Minute
 m.SetTemporary("key", "value", defaultTTL)
 ```
@@ -326,7 +326,7 @@ m.SetTemporary("key", "value", defaultTTL)
 **Solution:** Wrap with helper:
 ```go
 type CacheWrapper struct {
-    *ttlmap.TTLMap
+    *temap.temap
     defaultTTL time.Duration
 }
 
@@ -340,8 +340,8 @@ func (c *CacheWrapper) Set(key string, value interface{}) {
 // go-cache: Background cleanup every N minutes
 c := cache.New(5*time.Minute, 10*time.Minute)  // Cleanup every 10 min
 
-// TTLMap: Per-item timers (no cleanup interval needed)
-m := ttlmap.New(nil)  // Immediate cleanup on expiration
+// temap: Per-item timers (no cleanup interval needed)
+m := temap.New(nil)  // Immediate cleanup on expiration
 ```
 
 3. **IncrementInt/DecrementInt:**
@@ -349,7 +349,7 @@ m := ttlmap.New(nil)  // Immediate cleanup on expiration
 // go-cache: Atomic increment
 c.IncrementInt("counter", 1)
 
-// TTLMap: Manual increment (not atomic)
+// temap: Manual increment (not atomic)
 if val, ok := m.Get("counter"); ok {
     count := val.(int)
     m.SetTemporary("counter", count+1, ttl)
@@ -360,7 +360,7 @@ if val, ok := m.Get("counter"); ok {
 ```go
 type Counter struct {
     mu sync.Mutex
-    m  *ttlmap.TTLMap
+    m  *temap.temap
 }
 
 func (c *Counter) Increment(key string, delta int, ttl time.Duration) {
@@ -407,12 +407,12 @@ rdb.Expire(ctx, "key", 10*time.Minute)
 ttl, _ := rdb.TTL(ctx, "key").Result()
 ```
 
-### After: TTLMap (In-Memory)
+### After: temap (In-Memory)
 
 ```go
-import "github.com/yourusername/ttlmap"
+import "github.com/yourusername/temap"
 
-m := ttlmap.New(nil)
+m := temap.New(nil)
 
 // Set with expiration
 m.SetTemporary("key", "value", 5*time.Minute)
@@ -434,7 +434,7 @@ m.SetExpiry("key", time.Now().Add(10*time.Minute))
 
 ### When to Migrate from Redis
 
-✅ **Good candidates for TTLMap:**
+✅ **Good candidates for temap:**
 - Single-process application
 - Session storage within one service
 - Local cache layer
@@ -450,11 +450,11 @@ m.SetExpiry("key", time.Now().Add(10*time.Minute))
 
 ### Hybrid Approach
 
-Use both - TTLMap as L1 cache, Redis as L2:
+Use both - temap as L1 cache, Redis as L2:
 
 ```go
 type TieredCache struct {
-    l1 *ttlmap.TTLMap
+    l1 *temap.temap
     l2 *redis.Client
 }
 
@@ -479,7 +479,7 @@ func (c *TieredCache) Get(ctx context.Context, key string) (interface{}, error) 
 ### Migration Checklist
 
 - [ ] Identify single-process use cases
-- [ ] Replace Redis calls with TTLMap calls
+- [ ] Replace Redis calls with temap calls
 - [ ] Remove network error handling (in-memory now)
 - [ ] Remove context.Context parameters (not needed)
 - [ ] Update tests (no Redis server needed)
@@ -516,12 +516,12 @@ mc.Add(&memcache.Item{...})
 mc.Replace(&memcache.Item{...})
 ```
 
-### After: TTLMap
+### After: temap
 
 ```go
-import "github.com/yourusername/ttlmap"
+import "github.com/yourusername/temap"
 
-m := ttlmap.New(nil)
+m := temap.New(nil)
 
 // Set
 m.SetTemporary("key", []byte("value"), 300*time.Second)
@@ -545,7 +545,7 @@ if _, exists := m.Get("key"); exists {
 
 ### Key Differences
 
-| Feature | Memcached | TTLMap |
+| Feature | Memcached | temap |
 |---------|-----------|--------|
 | Storage | Network | In-memory |
 | Latency | ~1ms | ~25ns |
@@ -561,26 +561,26 @@ if _, exists := m.Get("key"); exists {
 data, _ := json.Marshal(obj)
 mc.Set(&memcache.Item{Key: key, Value: data})
 
-// TTLMap: Store directly
+// temap: Store directly
 m.SetTemporary(key, obj, ttl)  // No serialization needed
 ```
 
 **Value Size Limits:**
 ```go
 // Memcached: 1MB limit per item
-// TTLMap: Limited only by available RAM
+// temap: Limited only by available RAM
 ```
 
 **LRU Eviction:**
 ```go
 // Memcached: Automatic LRU eviction when full
-// TTLMap: No automatic eviction (use TTL or manual Remove)
+// temap: No automatic eviction (use TTL or manual Remove)
 ```
 
 **Solution - Implement LRU:**
 ```go
 type LRUCache struct {
-    m        *ttlmap.TTLMap
+    m        *temap.temap
     maxSize  int
     lruList  *list.List  // LRU tracking
     lruMap   map[string]*list.Element
@@ -615,7 +615,7 @@ cache := ttlcache.New[string, string]()
 cache.Set("key", "value", time.Minute)
 
 // After
-m := ttlmap.New(nil)
+m := temap.New(nil)
 m.SetTemporary("key", "value", time.Minute)
 ```
 
@@ -628,7 +628,7 @@ cache.SetTTL(time.Minute)
 cache.Set("key", "value")
 
 // After
-m := ttlmap.New(nil)
+m := temap.New(nil)
 defaultTTL := time.Minute
 m.SetTemporary("key", "value", defaultTTL)
 ```
@@ -650,24 +650,24 @@ type OldCache interface {
 }
 
 // Adapter
-type TTLMapAdapter struct {
-    *ttlmap.TTLMap
+type temapAdapter struct {
+    *temap.temap
 }
 
-func (a *TTLMapAdapter) Set(key string, value interface{}, duration time.Duration) {
+func (a *temapAdapter) Set(key string, value interface{}, duration time.Duration) {
     a.SetTemporary(key, value, duration)
 }
 
-func (a *TTLMapAdapter) Get(key string) (interface{}, bool) {
-    return a.TTLMap.Get(key)
+func (a *temapAdapter) Get(key string) (interface{}, bool) {
+    return a.temap.Get(key)
 }
 
-func (a *TTLMapAdapter) Delete(key string) {
+func (a *temapAdapter) Delete(key string) {
     a.Remove(key)
 }
 
 // Usage
-var cache OldCache = &TTLMapAdapter{ttlmap.New(nil)}
+var cache OldCache = &temapAdapter{temap.New(nil)}
 ```
 
 ### Pattern 2: Gradual Migration
@@ -677,7 +677,7 @@ Dual-write during migration:
 ```go
 type MigrationCache struct {
     old *OldCache
-    new *ttlmap.TTLMap
+    new *temap.temap
 }
 
 func (c *MigrationCache) Set(key string, value interface{}, ttl time.Duration) {
@@ -702,7 +702,7 @@ func (c *MigrationCache) Get(key string) (interface{}, bool) {
 ```go
 func TestMigrationParity(t *testing.T) {
     oldCache := OldCacheImpl{}
-    newCache := ttlmap.New(nil)
+    newCache := temap.New(nil)
 
     // Test same behavior
     testCases := []struct {
@@ -787,7 +787,7 @@ go tool pprof cpu.prof
 **Solutions:**
 ```go
 // Increase shards
-m := ttlmap.NewWithShards(64, 1000, nil)
+m := temap.NewWithShards(64, 1000, nil)
 
 // Non-blocking callback
 callback := func(key string, value interface{}) {
@@ -829,7 +829,7 @@ m.SetTemporary("key", &data, ttl)
 
 **Diagnosis:**
 ```go
-m := ttlmap.New(func(key string, value interface{}) {
+m := temap.New(func(key string, value interface{}) {
     fmt.Printf("Expired: %s at %v\n", key, time.Now())
 })
 
@@ -879,7 +879,7 @@ fmt.Println("Size:", m.Size())  // Should be 0
 
 ## Conclusion
 
-TTLMap provides a modern, high-performance alternative to many caching solutions. Key benefits:
+temap provides a modern, high-performance alternative to many caching solutions. Key benefits:
 
 - ✅ Better performance than Redis/Memcached for local cache
 - ✅ Automatic expiration (no manual cleanup)
@@ -887,7 +887,7 @@ TTLMap provides a modern, high-performance alternative to many caching solutions
 - ✅ Simple API
 - ✅ No external dependencies
 
-Choose TTLMap when:
+Choose temap when:
 - Single-process application
 - Low-latency requirements
 - No need for persistence
