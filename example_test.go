@@ -9,7 +9,7 @@ import (
 
 // Example demonstrates basic usage of temap
 func Example() {
-	m := temap.New(func(key string, value interface{}) {
+	m := temap.New(func(key, value any) {
 		fmt.Printf("Expired: %s\n", key)
 	})
 
@@ -107,7 +107,7 @@ func Example_highPerformance() {
 // Example_sessionManagement demonstrates a real-world use case
 func Example_sessionManagement() {
 	// Create session store with 30 minute TTL
-	sessions := temap.New(func(key string, value interface{}) {
+	sessions := temap.New(func(key, value any) {
 		fmt.Printf("Session %s expired\n", key)
 	})
 
@@ -129,7 +129,7 @@ func Example_sessionManagement() {
 
 // Example_cache demonstrates cache implementation
 func Example_cache() {
-	cache := temap.NewWithCapacity(1000, func(key string, value interface{}) {
+	cache := temap.NewWithCapacity(1000, func(key, value any) {
 		fmt.Printf("Cache miss: %s\n", key)
 	})
 

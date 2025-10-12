@@ -1,6 +1,9 @@
 package temap
 
 import (
+	"bytes"
+	"encoding/gob"
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -8,7 +11,7 @@ import (
 )
 
 // ExpirationCallback is called when a key expires
-type ExpirationCallback func(key string, value interface{})
+type ExpirationCallback func(key, value any)
 
 type item struct {
 	value      interface{}
@@ -19,11 +22,11 @@ type item struct {
 // shard represents a single map shard
 type shard struct {
 	mu    sync.RWMutex
-	items map[string]*item
+	items map[any]*item
 }
 
 // temap is a sharded, thread-safe map with TTL support
-type temap struct {
+type TimedMap struct {
 	shards   []*shard
 	mask     uint32
 	callback ExpirationCallback
@@ -32,19 +35,19 @@ type temap struct {
 }
 
 // New creates a new temap with optimal shard count (based on CPU cores)
-func New(callback ExpirationCallback) *temap {
+func New(callback ExpirationCallback) *TimedMap {
 	return NewWithShards(0, 0, callback)
 }
 
 // NewWithCapacity creates a new temap with pre-allocated capacity per shard
-func NewWithCapacity(capacity int, callback ExpirationCallback) *temap {
+func NewWithCapacity(capacity int, callback ExpirationCallback) *TimedMap {
 	return NewWithShards(0, capacity, callback)
 }
 
 // NewWithShards creates a new temap with specific shard count
 // shardCount of 0 means auto-detect based on CPU cores (recommended)
 // capacityPerShard of 0 means default capacity
-func NewWithShards(shardCount, capacityPerShard int, callback ExpirationCallback) *temap {
+func NewWithShards(shardCount, capacityPerShard int, callback ExpirationCallback) *TimedMap {
 	if shardCount <= 0 {
 		// Auto-detect: use power of 2 based on CPU cores
 		cores := runtime.NumCPU()
@@ -57,7 +60,7 @@ func NewWithShards(shardCount, capacityPerShard int, callback ExpirationCallback
 		shardCount = nextPowerOf2(shardCount)
 	}
 
-	m := &temap{
+	m := &TimedMap{
 		shards:   make([]*shard, shardCount),
 		mask:     uint32(shardCount - 1),
 		callback: callback,
@@ -70,9 +73,9 @@ func NewWithShards(shardCount, capacityPerShard int, callback ExpirationCallback
 
 	for i := 0; i < shardCount; i++ {
 		if capacityPerShard > 0 {
-			m.shards[i] = &shard{items: make(map[string]*item, capacityPerShard)}
+			m.shards[i] = &shard{items: make(map[any]*item, capacityPerShard)}
 		} else {
-			m.shards[i] = &shard{items: make(map[string]*item)}
+			m.shards[i] = &shard{items: make(map[any]*item)}
 		}
 	}
 
@@ -80,13 +83,13 @@ func NewWithShards(shardCount, capacityPerShard int, callback ExpirationCallback
 }
 
 // getShard returns the shard for a given key using FNV-1a hash
-func (m *temap) getShard(key string) *shard {
-	hash := fnv1a(key)
+func (m *TimedMap) getShard(key any) *shard {
+	hash, _ := fnv1a(key) //ignore error
 	return m.shards[hash&m.mask]
 }
 
 // SetTemporary adds a key-value pair with TTL
-func (m *temap) SetTemporary(key string, value interface{}, ttl time.Duration) {
+func (m *TimedMap) SetTemporary(key, value any, ttl time.Duration) {
 	s := m.getShard(key)
 	s.mu.Lock()
 
@@ -119,7 +122,7 @@ func (m *temap) SetTemporary(key string, value interface{}, ttl time.Duration) {
 }
 
 // SetPermanent adds a key-value pair without expiration
-func (m *temap) SetPermanent(key string, value interface{}) {
+func (m *TimedMap) SetPermanent(key string, value interface{}) {
 	s := m.getShard(key)
 	s.mu.Lock()
 
@@ -146,7 +149,7 @@ func (m *temap) SetPermanent(key string, value interface{}) {
 }
 
 // Get retrieves a value by key
-func (m *temap) Get(key string) (interface{}, bool) {
+func (m *TimedMap) Get(key any) (any, bool) {
 	s := m.getShard(key)
 	s.mu.RLock()
 	itm, ok := s.items[key]
@@ -161,13 +164,13 @@ func (m *temap) Get(key string) (interface{}, bool) {
 }
 
 // GetMultiple retrieves multiple values at once
-func (m *temap) GetMultiple(keys []string) map[string]interface{} {
+func (m *TimedMap) GetMultiple(keys []string) map[string]interface{} {
 	result := make(map[string]interface{}, len(keys))
 
 	// Group keys by shard to minimize lock acquisitions
 	shardKeys := make(map[uint32][]string)
 	for _, key := range keys {
-		hash := fnv1a(key)
+		hash, _ := fnv1a(key) //ignore error
 		idx := hash & m.mask
 		shardKeys[idx] = append(shardKeys[idx], key)
 	}
@@ -188,7 +191,7 @@ func (m *temap) GetMultiple(keys []string) map[string]interface{} {
 }
 
 // Remove deletes a key and cancels its timer
-func (m *temap) Remove(key string) bool {
+func (m *TimedMap) Remove(key any) bool {
 	s := m.getShard(key)
 	s.mu.Lock()
 
@@ -215,11 +218,11 @@ func (m *temap) Remove(key string) bool {
 }
 
 // RemoveMultiple removes multiple keys at once
-func (m *temap) RemoveMultiple(keys []string) int {
+func (m *TimedMap) RemoveMultiple(keys []string) int {
 	// Group keys by shard
 	shardKeys := make(map[uint32][]string)
 	for _, key := range keys {
-		hash := fnv1a(key)
+		hash, _ := fnv1a(key) //ignore error
 		idx := hash & m.mask
 		shardKeys[idx] = append(shardKeys[idx], key)
 	}
@@ -256,7 +259,7 @@ func (m *temap) RemoveMultiple(keys []string) int {
 }
 
 // RemoveAll clears all entries and cancels all timers
-func (m *temap) RemoveAll() {
+func (m *TimedMap) RemoveAll() {
 	for _, s := range m.shards {
 		s.mu.Lock()
 		for _, itm := range s.items {
@@ -267,7 +270,7 @@ func (m *temap) RemoveAll() {
 			itm.timer = nil
 			m.pool.Put(itm)
 		}
-		s.items = make(map[string]*item)
+		s.items = make(map[any]*item)
 		s.mu.Unlock()
 	}
 
@@ -275,13 +278,13 @@ func (m *temap) RemoveAll() {
 }
 
 // Size returns the current number of items (lock-free)
-func (m *temap) Size() int {
+func (m *TimedMap) Size() int {
 	return int(atomic.LoadInt64(&m.size))
 }
 
 // SetExpiry changes the expiration time of an existing key
 // Returns false if key doesn't exist
-func (m *temap) SetExpiry(key string, expiresAt time.Time) bool {
+func (m *TimedMap) SetExpiry(key any, expiresAt time.Time) bool {
 	s := m.getShard(key)
 	s.mu.Lock()
 
@@ -328,8 +331,8 @@ func (m *temap) SetExpiry(key string, expiresAt time.Time) bool {
 }
 
 // Keys returns all current keys (snapshot)
-func (m *temap) Keys() []string {
-	keys := make([]string, 0, m.Size())
+func (m *TimedMap) Keys() []any {
+	keys := make([]any, 0, m.Size())
 	for _, s := range m.shards {
 		s.mu.RLock()
 		for k := range s.items {
@@ -341,7 +344,7 @@ func (m *temap) Keys() []string {
 }
 
 // ForEach iterates over all items with a callback
-func (m *temap) ForEach(fn func(key string, value interface{}) bool) {
+func (m *TimedMap) ForEach(fn func(key, value any) bool) {
 	for _, s := range m.shards {
 		s.mu.RLock()
 		for k, itm := range s.items {
@@ -355,7 +358,7 @@ func (m *temap) ForEach(fn func(key string, value interface{}) bool) {
 }
 
 // expire handles key expiration (called by timer)
-func (m *temap) expire(key string) {
+func (m *TimedMap) expire(key any) {
 	s := m.getShard(key)
 	s.mu.Lock()
 	itm, ok := s.items[key]
@@ -382,17 +385,25 @@ func (m *temap) expire(key string) {
 }
 
 // fnv1a implements FNV-1a hash (fast, good distribution)
-func fnv1a(s string) uint32 {
+func fnv1a(s any) (uint32, error) {
 	const (
 		offset32 = 2166136261
 		prime32  = 16777619
 	)
+
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(s); err != nil {
+		return 0, fmt.Errorf("failed to encode value: %w", err)
+	}
+
 	hash := uint32(offset32)
-	for i := 0; i < len(s); i++ {
-		hash ^= uint32(s[i])
+	// for i := 0; i < len(s); i++ {
+	for _, b := range buf.Bytes() {
+		hash ^= uint32(b)
 		hash *= prime32
 	}
-	return hash
+	return hash, nil
 }
 
 // nextPowerOf2 returns the next power of 2 >= n

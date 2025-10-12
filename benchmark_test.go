@@ -85,7 +85,7 @@ func BenchmarkWithCallback(b *testing.B) {
 	callbackCount := 0
 	var mu sync.Mutex
 
-	callback := func(key string, value interface{}) {
+	callback := func(key, value any) {
 		mu.Lock()
 		callbackCount++
 		mu.Unlock()

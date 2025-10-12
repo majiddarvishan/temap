@@ -44,10 +44,10 @@ func TestBasicOperations(t *testing.T) {
 
 // Test: Expiration
 func TestExpiration(t *testing.T) {
-	expired := make(map[string]interface{})
+	expired := make(map[any]interface{})
 	var mu sync.Mutex
 
-	m := New(func(key string, value interface{}) {
+	m := New(func(key, value any) {
 		mu.Lock()
 		expired[key] = value
 		mu.Unlock()
@@ -197,8 +197,8 @@ func TestKeysAndForEach(t *testing.T) {
 
 	// Test ForEach
 	found := make(map[string]int)
-	m.ForEach(func(key string, value interface{}) bool {
-		found[key] = value.(int)
+	m.ForEach(func(key, value any) bool {
+		found[key.(string)] = value.(int)
 		return true
 	})
 
@@ -214,7 +214,7 @@ func TestKeysAndForEach(t *testing.T) {
 
 	// Test ForEach early termination
 	count := 0
-	m.ForEach(func(key string, value interface{}) bool {
+	m.ForEach(func(key, value any) bool {
 		count++
 		return false // stop after first
 	})
